@@ -8,7 +8,6 @@ const cors = require('cors');
 app.use(cors()); // 모든 도메인에서의 요청을 허용
 
 
-
 // 다운로드 폴더 경로
 const DOWNLOAD_DIR = './downloads/';
 
