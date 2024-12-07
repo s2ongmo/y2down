@@ -75,27 +75,23 @@ def get_trending_videos(country_code):
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    # 클라이언트의 IP 주소 가져오기
-    if request.headers.getlist("X-Forwarded-For"):
-        ip_address = request.headers.getlist("X-Forwarded-For")[0]
-    else:
-        ip_address = request.remote_addr
-
-    # 클라이언트의 국가 코드 가져오기
-    country_code = get_client_country(ip_address)
-    print(f"Detected country code: {country_code}")  # 국가 코드 출력
-    trending_videos = get_trending_videos(country_code)
-    
-    if request.method == 'POST':
+    if request.method == 'POST' and 'youtube_url' in request.form:
         youtube_url = request.form.get('youtube_url')
         format_choice = request.form.get('format')
 
-        # 유튜브 URL 유효성 검사
+        # 기본값 초기화
+        filename = None
+
         if not youtube_url:
             flash('유튜브 링크를 입력해주세요.')
             return redirect(url_for('index'))
 
+        if format_choice not in ['mp4', 'mp3']:
+            flash('지원하지 않는 형식입니다.')
+            return redirect(url_for('index'))
+
         try:
+            # yt-dlp 옵션 설정
             ydl_opts = {}
             if format_choice == 'mp4':
                 ydl_opts = {
@@ -113,25 +109,28 @@ def index():
                         'preferredquality': '192',
                     }],
                 }
-            else:
-                flash('지원하지 않는 형식입니다.')
-                return redirect(url_for('index'))
 
+            # 다운로드 실행
             with YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(youtube_url, download=True)
+                filename = ydl.prepare_filename(info_dict)
+
                 if format_choice == 'mp3':
                     filename = os.path.splitext(os.path.basename(filename))[0] + '.mp3'
                 else:
                     filename = os.path.basename(filename)
 
+            # 다운로드 완료 후 파일 제공
             return redirect(url_for('download_file', filename=filename))
 
         except Exception as e:
             error_message = traceback.format_exc()
-            print(error_message)
+            print(f'오류 발생: {error_message}')
             flash(f'다운로드 중 오류가 발생했습니다: {str(e)}')
             return redirect(url_for('index'))
 
-    return render_template('index.html', trending_videos=trending_videos, country_code=country_code)
+    return render_template('index.html')
+
 
 @app.route('/download/<filename>')
 def download_file(filename):
