@@ -2,11 +2,10 @@ from flask import Flask, render_template, request, send_from_directory, redirect
 import os
 import traceback
 from yt_dlp import YoutubeDL
-from pydub import AudioSegment
 from dotenv import load_dotenv
 from googleapiclient.discovery import build
 import requests
-from flask_caching import Cache  # Cache 임포트 추가
+from flask_caching import Cache
 
 # 환경 변수 로드
 load_dotenv()
@@ -19,8 +18,8 @@ app.config['DOWNLOAD_FOLDER'] = os.path.join(os.getcwd(), 'downloads')
 if not os.path.exists(app.config['DOWNLOAD_FOLDER']):
     os.makedirs(app.config['DOWNLOAD_FOLDER'])
 
-# 캐싱 설정
-cache = Cache(app, config={'CACHE_TYPE': 'simple'})  # app이 먼저 정의되어야 함
+# 캐싱 설정 (간단한 메모리 캐시 사용)
+cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
 # YouTube API 설정
 YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')
@@ -28,8 +27,8 @@ youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
 
 def get_client_country(ip_address):
     """
-    IP 주소를 기반으로 클라이언트의 국가 코드를 반환합니다.
-    ip-api.com의 무료 API를 사용합니다.
+    클라이언트 IP를 기반으로 국가 코드를 반환합니다.
+    ip-api.com 무료 API 사용
     """
     cached_country = cache.get(ip_address)
     if cached_country:
@@ -38,19 +37,19 @@ def get_client_country(ip_address):
     try:
         response = requests.get(f"http://ip-api.com/json/{ip_address}")
         data = response.json()
-        if data['status'] == 'success':
-            country_code = data['countryCode']
-            cache.set(ip_address, country_code, timeout=60*60)  # 1시간 동안 캐싱
+        if data.get('status') == 'success':
+            country_code = data.get('countryCode')
+            cache.set(ip_address, country_code, timeout=60*60)  # 1시간 캐시
             return country_code
         else:
             return 'KR'  # 기본값: 한국
     except Exception as e:
         print("Error fetching geolocation data:", e)
-        return 'KR'  # 기본값: 한국
+        return 'KR'
 
 def get_trending_videos(country_code):
     """
-    YouTube Data API를 사용하여 지정된 국가의 트렌딩 동영상을 가져옵니다.
+    지정된 국가의 트렌딩 동영상을 YouTube API로 가져옵니다.
     """
     try:
         request_trending = youtube.videos().list(
@@ -75,11 +74,15 @@ def get_trending_videos(country_code):
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
+    if request.method == 'GET':
+        ip_address = request.remote_addr
+        country_code = get_client_country(ip_address)
+        trending_videos = get_trending_videos(country_code)
+        return render_template('index.html', country_code=country_code, trending_videos=trending_videos)
+    
     if request.method == 'POST' and 'youtube_url' in request.form:
         youtube_url = request.form.get('youtube_url')
         format_choice = request.form.get('format')
-
-        # 기본값 초기화
         filename = None
 
         if not youtube_url:
@@ -91,12 +94,15 @@ def index():
             return redirect(url_for('index'))
 
         try:
-            # yt-dlp 옵션 설정
-            ydl_opts = {}
             if format_choice == 'mp4':
                 ydl_opts = {
-                    'format': 'bestvideo+bestaudio/best',
+                    # MP4 컨테이너(비디오) + M4A(AAC 오디오)를 우선적으로 선택
+                    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+                    
+                    # 다운로드 파일명 설정
                     'outtmpl': os.path.join(app.config['DOWNLOAD_FOLDER'], '%(title)s.%(ext)s'),
+                    
+                    # 최종 출력 파일 컨테이너
                     'merge_output_format': 'mp4',
                 }
             elif format_choice == 'mp3':
@@ -120,21 +126,15 @@ def index():
                 else:
                     filename = os.path.basename(filename)
 
-            # 다운로드 완료 후 파일 제공
             return redirect(url_for('download_file', filename=filename))
-
         except Exception as e:
             error_message = traceback.format_exc()
             print(f'오류 발생: {error_message}')
             flash(f'다운로드 중 오류가 발생했습니다: {str(e)}')
             return redirect(url_for('index'))
 
-    return render_template('index.html')
-
-
 @app.route('/download/<filename>')
 def download_file(filename):
-    # 파일명에서 디렉토리 경로를 제거하고, 안전하게 파일을 전달
     safe_filename = os.path.basename(filename)
     return send_from_directory(app.config['DOWNLOAD_FOLDER'], safe_filename, as_attachment=True)
 
