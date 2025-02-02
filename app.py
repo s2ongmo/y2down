@@ -10,9 +10,11 @@ from flask_caching import Cache
 # 환경 변수 로드
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static')
 app.secret_key = os.getenv('SECRET_KEY', 'default_secret_key')
 app.config['DOWNLOAD_FOLDER'] = os.path.join(os.getcwd(), 'downloads')
+
+
 
 # 다운로드 폴더가 없으면 생성
 if not os.path.exists(app.config['DOWNLOAD_FOLDER']):
@@ -137,6 +139,10 @@ def index():
 def download_file(filename):
     safe_filename = os.path.basename(filename)
     return send_from_directory(app.config['DOWNLOAD_FOLDER'], safe_filename, as_attachment=True)
+
+@app.route('/sitemap.xml')
+def sitemap():
+    return send_from_directory(os.path.join(app.root_path, 'static'), 'sitemap.xml')
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
