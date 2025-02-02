@@ -74,12 +74,8 @@ def get_trending_videos(country_code):
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    if request.method == 'GET':
-        ip_address = request.remote_addr
-        country_code = get_client_country(ip_address)
-        trending_videos = get_trending_videos(country_code)
-        return render_template('index.html', country_code=country_code, trending_videos=trending_videos)
-    
+
+        
     if request.method == 'POST' and 'youtube_url' in request.form:
         youtube_url = request.form.get('youtube_url')
         format_choice = request.form.get('format')
@@ -132,7 +128,11 @@ def index():
             print(f'오류 발생: {error_message}')
             flash(f'다운로드 중 오류가 발생했습니다: {str(e)}')
             return redirect(url_for('index'))
-
+    ip_address = request.remote_addr
+    country_code = get_client_country(ip_address)
+    trending_videos = get_trending_videos(country_code)
+    return render_template('index.html', country_code=country_code, trending_videos=trending_videos)
+    
 @app.route('/download/<filename>')
 def download_file(filename):
     safe_filename = os.path.basename(filename)
